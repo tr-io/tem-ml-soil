@@ -110,7 +110,7 @@ output_size = 1 # output a real number
 
 # instantiate the model
 model = LSTMSoil(input_size, hidden_size, output_size, n_layers, x_train_tensors.shape[1]) # LSTM model class
-model.cuda()
+model.to(device)
 print(model) # print the model
 
 # define loss function and optimizer
