@@ -96,7 +96,7 @@ model.add(LSTM(50, input_shape=(train_x.shape[1], train_x.shape[2])))
 model.add(Dense(1))
 
 opt = keras.optimizers.Adam(learning_rate=0.0001)
-model.compile(loss='mae', optimizer=opt)
+model.compile(loss='mae', optimizer=opt, metrics=['accuracy'])
 # fit the model
 history = model.fit(train_x, train_y, epochs=100, batch_size=30, validation_data=(valid_x, valid_y), verbose=2, shuffle=False)
 # plot the history
