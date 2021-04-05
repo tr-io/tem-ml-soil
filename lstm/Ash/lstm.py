@@ -9,30 +9,38 @@ from torch.autograd import Variable
 
 # load the data
 _dir = os.path.abspath('')
-data_path = os.path.join(_dir, "../../data/daily_cleaned.csv")
+
+# modifed data
+data_path = os.path.join(_dir, "../../data/modified_data/modified_data.csv")
+
+#original data
+# data_path = os.path.join(_dir, "../../data/daily_cleaned.csv")
+
 df = pd.read_csv(data_path)
 df = df.drop(df.columns[0], axis=1)
+output_column = 'label'
 new_columns = df.columns.values
-new_columns[-1] = 'label'
+new_columns[-1] = output_column
 df.columns = new_columns
-#print(df)
+print(len(df))
 
 # possibly scale dataset here?
 def split_sequence(dataframe: pd.DataFrame, outputColName: str, steps: int):
     
     for i in range(steps, 0, -1):
-        kwargs = {'op(t-{})'.format(i): dataframe[outputColName].shift(i).values}
+        kwargs = {'{}(t-{})'.format(outputColName,i): dataframe[outputColName].shift(i).values}
         dataframe = dataframe.assign(**kwargs)
     dataframe = dataframe.fillna(0)
-    dataframe = dataframe[[col for col in dataframe.columns if col != outputColName] + [outputColName]]
     return dataframe
 
 # splitting the sequence to get historical output values to use in the lstm
-df = split_sequence(dataframe=df, outputColName='label', steps=10)
-
+df = split_sequence(dataframe=df, outputColName=output_column, steps=10)
+# df = split_sequence(dataframe=df, outputColName='vapor', steps=10)
+# re order the output column to be at the end
+# df = df[[col for col in df.columns if col != output_column] + [output_column]]
 # split features and label
-X = df.iloc[:, :-1]
-Y = df.iloc[:, -1]
+X = df.drop(labels=output_column, axis=1)
+Y = df[output_column]
 
 print(X)
 print(Y)
@@ -104,7 +112,7 @@ class LSTMSoil(nn.Module):
         h_0 = Variable(torch.zeros(self.n_layers, x.size(0), self.hidden_size)).to(device) # set initial hidden state
         c_0 = Variable(torch.zeros(self.n_layers, x.size(0), self.hidden_size)).to(device) # set initial cell state
         # send input through LSTM
-        lstm_out, (hn, cn) = self.lstm(x, (h_0, c_0)) # lstm with input x, hidden tuple
+        _, (hn, _) = self.lstm(x, (h_0, c_0)) # lstm with input x, hidden tuple
         # reshape the hidden cell for the fully connected layer
         hn = hn.view(-1, self.hidden_size)
         out = self.fc(hn)
