@@ -139,7 +139,6 @@ def test_cross_validation(x_train_tensors: Tensor, y_train_tensors: Tensor, opti
         agg_valid_loss.append(np.mean(val_loss))
         print("K-Folds: {}, Mean Train Loss: {}, Mean Validation Loss: {}".format(i + 1, agg_train_loss[-1], agg_valid_loss[-1]))
     return agg_train_loss, agg_valid_loss
-    # plot_losses(agg_train_loss, agg_valid_loss, xlabel='K-Fold', ylabel='Loss')
 
 def run_epochs(model: LSTMSoil, x_train_tensors: Tensor, y_train_tensors: Tensor, x_valid_tensors: Tensor
                 , y_valid_tensors: Tensor, optimizer: Adam, loss_fn: nn.MSELoss, epochs: int): 
@@ -163,7 +162,7 @@ def run_epochs(model: LSTMSoil, x_train_tensors: Tensor, y_train_tensors: Tensor
         print("Epoch: %d, Loss: %1.5f, Validation Loss: %1.5f" % (epoch, loss.item(), val_loss.item()))
     print("Mean Training Loss: {}, Mean Validation Loss: {}".format(np.mean(agg_train_loss), np.mean(agg_valid_loss)))
 
-def test_results(model: LSTMSoil, x_test_tensor: Tensor, y_test_tensor: Tensor, loss_fn: nn.MSELoss):
+def test_result(model: LSTMSoil, x_test_tensor: Tensor, y_test_tensor: Tensor, loss_fn: nn.MSELoss):
     # now run model on test dataset 
     model.eval()
     y_pred = model(x_test_tensor)
@@ -197,7 +196,7 @@ def main():
     print("Min Validation Loss: {} in fold: {}".format(min_val_loss, min_val_loss_idx + 1))
     # plot_losses(np.asarray(train_losses) * 100, np.asarray(val_losses) * 100, xlabel='K', ylabel='Loss x 100')
     
-    test_results(model, x_test_tensor, y_test_tensor,loss_fn)
+    test_result(model, x_test_tensor, y_test_tensor,loss_fn)
     
 
 if __name__ == "__main__":
