@@ -2,13 +2,15 @@ import os
 import torch
 import torch.nn as nn
 import torch.tensor as Tensor
-import torch.optim.adam as Adam
+from torch.optim import Adam
 import numpy as np
+import argparse
 import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from torch.autograd import Variable
 from LSTMSoil import LSTMSoil
+import io
 from types import FunctionType
 
 # load the data
@@ -170,6 +172,11 @@ def test_result(model: LSTMSoil, x_test_tensor: Tensor, y_test_tensor: Tensor, l
     print("Test Loss: %1.5f" % (test_loss.item()))
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-ld', '--load', type=str, help='Model file to load (state dict)') # option to load a saved model
+    parser.add_argument('-sv', '--save', default=0, type=int, help='Save model or not (1 for true, 0 for false)')
+    args = parser.parse_args()
+
     path = get_data_path()
     df: pd.DataFrame = get_data(path)
     X, Y = get_features_op(df)
@@ -188,8 +195,19 @@ def main():
     output_size = 1 # output a real number
     # define loss function and optimizer
     loss_fn = torch.nn.MSELoss()
-    model = get_trained_model(input_size, hidden_size, output_size, n_layers, x_train_tensor, device)
+
+    # load model parameters if possible
+    if args.load is not None:
+        # load model weights
+        print("Loading model from file:", str(args.load))
+        model = LSTMSoil(input_size, hidden_size, output_size, n_layers, x_train_tensor.shape[1], device=device)
+        model.load_state_dict(torch.load(args.load, map_location=device))
+    else:
+        model = get_trained_model(input_size, hidden_size, output_size, n_layers, x_train_tensor, device)
+    
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    # send model to device
+    model.to(device)
     train_losses, val_losses = test_cross_validation(x_train_tensor, y_train_tensor, optimizer, model, loss_fn, max_folds=18) # 18 seems best
     min_val_loss = min(val_losses)
     min_val_loss_idx = val_losses.index(min_val_loss)
@@ -197,6 +215,14 @@ def main():
     # plot_losses(np.asarray(train_losses) * 100, np.asarray(val_losses) * 100, xlabel='K', ylabel='Loss x 100')
     
     test_result(model, x_test_tensor, y_test_tensor,loss_fn)
+
+    if args.save == 1:
+        # save model
+        print("Saving model to ./model/lstm-mode.pt")
+        _dir = os.path.dirname(__file__)
+        save_local_path = "model/lstm-model.pt"
+        save_abs_path = os.path.join(_dir, save_local_path)
+        torch.save(model.state_dict(), save_abs_path)
     
 
 if __name__ == "__main__":

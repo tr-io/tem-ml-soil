@@ -32,12 +32,12 @@ x_train = X.iloc[:1386, :].to_numpy()
 y_train = Y.iloc[:1386].to_numpy()
 y_train = y_train.reshape((len(y_train), 1))
 
-x_valid = X.iloc[1386:2078, :].to_numpy()
-y_valid = Y.iloc[1386:2078].to_numpy()
+x_valid = X.iloc[1386:2079, :].to_numpy()
+y_valid = Y.iloc[1386:2079].to_numpy()
 y_valid = y_valid.reshape((len(y_valid), 1))
 
-x_test = X.iloc[2078:, :].to_numpy()
-y_test = Y.iloc[2078:].to_numpy()
+x_test = X.iloc[2079:, :].to_numpy()
+y_test = Y.iloc[2079:].to_numpy()
 y_test = y_test.reshape((len(y_test), 1))
 
 print("Train Shape: ", x_train.shape, y_train.shape)
@@ -108,50 +108,59 @@ hidden_size = 50 # number of neurons in the hidden state
 n_layers = 1 # number of stacked lstm layers
 output_size = 1 # output a real number
 
-# instantiate the model
-model = LSTMSoil(input_size, hidden_size, output_size, n_layers, x_train_tensors.shape[1]) # LSTM model class
-model.to(device)
-print(model) # print the model
+test_losses = [] # collect losses over multiple runs
+for i in range(10):
+    print("Run: %d" % (i))
+    # do 10 runs and collect avg loss
+    # instantiate the model
+    model = LSTMSoil(input_size, hidden_size, output_size, n_layers, x_train_tensors.shape[1]) # LSTM model class
+    model.to(device)
+    print(model) # print the model
 
-# define loss function and optimizer
-# also hyperparameters
-loss_fn = torch.nn.MSELoss()
-optimizer  = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    # define loss function and optimizer
+    # also hyperparameters
+    loss_fn = torch.nn.MSELoss() # TODO: use a more "meaningful" loss function
+    optimizer  = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-# setup stats collection
-agg_train_loss = [] # training loss over time
-agg_valid_loss = [] # validation set loss over time
+    # setup stats collection
+    agg_train_loss = [] # training loss over time
+    agg_valid_loss = [] # validation set loss over time
 
-# train the model
-model.train()
-for epoch in range(epochs):
-    outputs = model(x_train_tensors) # pass inputs through model
-    optimizer.zero_grad() # calculate gradient, manually setting it to 0
-    # calculate loss
-    loss = loss_fn(outputs, y_train_tensors)
-    loss.backward()
-    optimizer.step() # backpropagation
+    # train the model
+    model.train()
+    for epoch in range(epochs):
+        outputs = model(x_train_tensors) # pass inputs through model
+        optimizer.zero_grad() # calculate gradient, manually setting it to 0
+        # calculate loss
+        loss = loss_fn(outputs, y_train_tensors)
+        loss.backward()
+        optimizer.step() # backpropagation
 
-    agg_train_loss.append(loss.item())
+        agg_train_loss.append(loss.item())
 
-    model.eval() # set model to be in evaluation mode
-    val_outs = model(x_valid_tensors)
-    val_loss = loss_fn(val_outs, y_valid_tensors)
-    agg_valid_loss.append(val_loss.item())
-    model.train() # set model to be in training mode
+        model.eval() # set model to be in evaluation mode
+        val_outs = model(x_valid_tensors)
+        val_loss = loss_fn(val_outs, y_valid_tensors)
+        agg_valid_loss.append(val_loss.item())
+        model.train() # set model to be in training mode
 
-    print("Epoch: %d, Loss: %1.5f, Validation Loss: %1.5f" % (epoch, loss.item(), val_loss.item()))
+        print("Epoch: %d, Loss: %1.5f, Validation Loss: %1.5f" % (epoch, loss.item(), val_loss.item()))
 
-# now run model on test dataset
-model.eval()
-y_pred = model(x_test_tensors)
-test_loss = loss_fn(y_pred, y_test_tensors)
-print("Test Loss: %1.5f" % (test_loss.item()))
+    # now run model on test dataset
+    model.eval()
+    y_pred = model(x_test_tensors)
+    test_loss = loss_fn(y_pred, y_test_tensors)
+    test_losses.append(test_loss.item())
+    print("Run: %d, Test Loss: %1.5f" % (i, test_loss.item()))
 
-# plot validation loss and training loss
-plt.plot(agg_train_loss, label='train')
-plt.plot(agg_valid_loss, label='validation')
-plt.xlabel("Epoch")
-plt.ylabel("Loss")
-plt.legend()
-plt.show()
+    # plot validation loss and training loss
+    plt.plot(agg_train_loss, label='train')
+    plt.plot(agg_valid_loss, label='validation')
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.legend()
+    plt.show()
+
+avg_loss = np.average(test_losses)
+
+print("Average test loss: %1.5f" % (avg_loss))
