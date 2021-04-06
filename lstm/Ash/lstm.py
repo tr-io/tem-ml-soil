@@ -8,8 +8,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from torch.autograd import Variable
+
 from LSTMSoil import LSTMSoil
-from types import FunctionType
 
 # load the data
 _dir = os.path.abspath('')
