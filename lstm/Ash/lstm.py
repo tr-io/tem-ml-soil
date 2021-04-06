@@ -211,8 +211,7 @@ def main():
     if args.load is not None:
         # load model weights
         print("Loading model from file:", str(args.load))
-        model = LSTMSoil(input_size, hidden_size, output_size, n_layers, x_train_tensor.shape[1], device=device)
-        model.load_state_dict(torch.load(args.load, map_location=device))
+        model: LSTMSoil = torch.load(str(args.load))
     else:
         model = get_trained_model(input_size, hidden_size, output_size, n_layers, x_train_tensor, device)
     
