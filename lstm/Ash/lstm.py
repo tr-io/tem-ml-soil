@@ -131,14 +131,25 @@ def perform_kfold_cross_val(x_train: Tensor, y_train: Tensor, optimizer: Adam
         # print("Fold: {}, Loss: {}, Validation Loss: {}, Row End: {}".format(fold + 1, loss.item(), val_loss.item(), fold_end))
     return train_losses, val_losses
 
+def save_model_to_file(model: LSTMSoil, save_path: str):
+    print("Saving model to {}".format(save_path))
+    _dir = os.path.dirname(__file__)
+    # save_local_path = "model/lstm-model.pt"
+    save_abs_path = os.path.join(_dir, save_path)
+    torch.save(model.state_dict(), save_abs_path)
+
 #hyperparameter estimation
 def test_cross_validation(x_train_tensors: Tensor, y_train_tensors: Tensor, optimizer: Adam
-                            , model: LSTMSoil, loss_fn: nn.MSELoss, max_folds: int) -> (list, list, list):
+                            , model: LSTMSoil, loss_fn: nn.MSELoss, save_model: bool, max_folds: int) -> (list, list, list):
     agg_train_loss, agg_valid_loss = list(), list()
     for i in range(max_folds):
         train_loss, val_loss = perform_kfold_cross_val(x_train_tensors, y_train_tensors, optimizer, model, i + 1, loss_fn)
         agg_train_loss.append(np.mean(train_loss))
         agg_valid_loss.append(np.mean(val_loss))
+        if save_model:
+            save_path = "model/lstm-model{}.pt".format(i + 1)
+            model.update_path(save_path)
+            save_model_to_file(model, save_path)
         print("K-Folds: {}, Mean Train Loss: {}, Mean Validation Loss: {}".format(i + 1, agg_train_loss[-1], agg_valid_loss[-1]))
     return agg_train_loss, agg_valid_loss
 
@@ -208,21 +219,28 @@ def main():
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     # send model to device
     model.to(device)
-    train_losses, val_losses = test_cross_validation(x_train_tensor, y_train_tensor, optimizer, model, loss_fn, max_folds=18) # 18 seems best
+    train_losses, val_losses = test_cross_validation(x_train_tensor, y_train_tensor, optimizer
+                                    , model, loss_fn, args.save == 1, max_folds=18) # 18 seems best
     min_val_loss = min(val_losses)
     min_val_loss_idx = val_losses.index(min_val_loss)
     print("Min Validation Loss: {} in fold: {}".format(min_val_loss, min_val_loss_idx + 1))
+    
+    #load best model
+    model = LSTMSoil(input_size, hidden_size, output_size, n_layers, x_train_tensor.shape[1], device=device)
+    load_path = "model/lstm-model{}.pt".format(min_val_loss_idx + 1)
+    model.load_state_dict(torch.load(load_path, map_location=device))
+    print(model)
     # plot_losses(np.asarray(train_losses) * 100, np.asarray(val_losses) * 100, xlabel='K', ylabel='Loss x 100')
     
     test_result(model, x_test_tensor, y_test_tensor,loss_fn)
 
-    if args.save == 1:
-        # save model
-        print("Saving model to ./model/lstm-mode.pt")
-        _dir = os.path.dirname(__file__)
-        save_local_path = "model/lstm-model.pt"
-        save_abs_path = os.path.join(_dir, save_local_path)
-        torch.save(model.state_dict(), save_abs_path)
+    # if args.save == 1:
+    #     # save model
+    #     print("Saving model to ./model/lstm-mode.pt")
+    #     _dir = os.path.dirname(__file__)
+    #     save_local_path = "model/lstm-model.pt"
+    #     save_abs_path = os.path.join(_dir, save_local_path)
+    #     torch.save(model.state_dict(), save_abs_path)
     
 
 if __name__ == "__main__":
