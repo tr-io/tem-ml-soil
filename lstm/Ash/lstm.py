@@ -136,7 +136,7 @@ def save_model_to_file(model: LSTMSoil, save_path: str):
     _dir = os.path.dirname(__file__)
     # save_local_path = "model/lstm-model.pt"
     save_abs_path = os.path.join(_dir, save_path)
-    torch.save(model.state_dict(), save_abs_path)
+    torch.save(model, save_abs_path)
 
 #hyperparameter estimation
 def test_cross_validation(x_train_tensors: Tensor, y_train_tensors: Tensor, optimizer: Adam
@@ -226,10 +226,11 @@ def main():
     print("Min Validation Loss: {} in fold: {}".format(min_val_loss, min_val_loss_idx + 1))
     
     #load best model
-    model = LSTMSoil(input_size, hidden_size, output_size, n_layers, x_train_tensor.shape[1], device=device)
+    # model = LSTMSoil(input_size, hidden_size, output_size, n_layers, x_train_tensor.shape[1], device=device)
     load_path = "model/lstm-model{}.pt".format(min_val_loss_idx + 1)
-    model.load_state_dict(torch.load(load_path, map_location=device))
-    print(model.path)
+    # model.load_state_dict(torch.load(load_path, map_location=device))
+    model: LSTMSoil = torch.load(load_path)
+    print(model)
     # plot_losses(np.asarray(train_losses) * 100, np.asarray(val_losses) * 100, xlabel='K', ylabel='Loss x 100')
     
     test_result(model, x_test_tensor, y_test_tensor,loss_fn)

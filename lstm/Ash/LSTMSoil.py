@@ -37,7 +37,7 @@ class LSTMSoil(nn.Module):
     def __str__(self):
         st, f = "(lstm): " + self.lstm.__str__(), "(fc): " + self.fc.__str__()
         if self.path is not None:
-            return "LSTMSoil(\n  {}\n  {}\n  path: {}\n)".format(st, f, self.path)
+            return "LSTMSoil(\n  {}\n  {}\n  (path): {}\n)".format(st, f, self.path)
         else:
             return "LSTMSoil(\n  {}\n  {}\n)".format(st, f)
         
