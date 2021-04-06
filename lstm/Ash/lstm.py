@@ -229,7 +229,7 @@ def main():
     model = LSTMSoil(input_size, hidden_size, output_size, n_layers, x_train_tensor.shape[1], device=device)
     load_path = "model/lstm-model{}.pt".format(min_val_loss_idx + 1)
     model.load_state_dict(torch.load(load_path, map_location=device))
-    print(model)
+    print(model.path)
     # plot_losses(np.asarray(train_losses) * 100, np.asarray(val_losses) * 100, xlabel='K', ylabel='Loss x 100')
     
     test_result(model, x_test_tensor, y_test_tensor,loss_fn)
