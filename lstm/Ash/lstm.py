@@ -12,6 +12,7 @@ from torch.autograd import Variable
 from LSTMSoil import LSTMSoil
 import io
 from types import FunctionType
+from model_generation import get_model, learning_rate, get_model_hidden_size_estimation
 
 # load the data
 _dir = os.path.abspath('')
@@ -46,7 +47,7 @@ def split_sequence(dataframe: pd.DataFrame, outputColName: str, steps: int):
 # get features as X and output as Y
 def get_features_op(df: pd.DataFrame) -> (pd.DataFrame, pd.DataFrame):
     # splitting the sequence to get historical output values to use in the lstm
-    df = split_sequence(dataframe=df, outputColName=output_column, steps=10)
+    # df = split_sequence(dataframe=df, outputColName=output_column, steps=10)
     # split features and label
     X = df.drop(labels=output_column, axis=1)
     Y = df[output_column]
@@ -54,9 +55,9 @@ def get_features_op(df: pd.DataFrame) -> (pd.DataFrame, pd.DataFrame):
     return X, Y
 
 # plot validation loss and training loss
-def plot_losses(train_losses: list, val_losses: list, xlabel: str, ylabel: str):
-    plt.plot(train_losses, label='train')
-    plt.plot(val_losses, label='validation')
+def plot_losses(train_losses: list, val_losses: list, sizes: list, xlabel: str, ylabel: str):
+    plt.plot(sizes, train_losses, label='train')
+    plt.plot(sizes, val_losses, label='validation')
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
     plt.legend()
@@ -93,12 +94,8 @@ def convert_to_tensor(arr: np.array, device: torch.device, reshape: bool = True)
     if reshape: tensor = torch.reshape(tensor, (tensor.shape[0], 1, tensor.shape[1]))
     return tensor
 
-def get_trained_model(input_size: int, hidden_size: int, output_size: int, n_layers: int
-                        , x_train_tensor: Tensor, device: torch.device) -> LSTMSoil:
-    model = LSTMSoil(input_size, hidden_size, output_size, n_layers, x_train_tensor.shape[1], device=device) # LSTM model class
-    model.to(device)
-    model.train()
-    return model
+def get_trained_model(input_size: int, device: torch.device) -> LSTMSoil:
+    return get_model(input_size, device)
 
 # break tensor data to training and validation tensors according to the fraction provided
 def get_train_val_sets(data: Tensor, frac: float = 0.6) -> (Tensor, Tensor):
@@ -113,6 +110,7 @@ def perform_kfold_cross_val(x_train: Tensor, y_train: Tensor, optimizer: Adam
     fold_end = 0
     train_losses, val_losses = list(), list()
     for fold in range(folds):
+        model.train()
         optimizer.zero_grad()
         fold_end += fold_increment
         if fold_end >= len(x_train): fold_end = len(x_train)
@@ -131,6 +129,24 @@ def perform_kfold_cross_val(x_train: Tensor, y_train: Tensor, optimizer: Adam
         # print("Fold: {}, Loss: {}, Validation Loss: {}, Row End: {}".format(fold + 1, loss.item(), val_loss.item(), fold_end))
     return train_losses, val_losses
 
+def test_hidden_size(x_train_tensors: Tensor, y_train_tensors: Tensor, optimizer: Adam
+                            , input_size: int, device: torch.device, loss_fn: nn.MSELoss, save_model: bool):
+    sizes = list(range(10, 51, 10))
+    agg_train_loss, agg_valid_loss = list(), list()
+    for i in range(len(sizes)):
+        size = sizes[i]
+        model = get_model_hidden_size_estimation(input_size, device, size)
+        train_loss, val_loss = perform_kfold_cross_val(x_train_tensors, y_train_tensors, optimizer, model, 10, loss_fn)
+        agg_train_loss.append(np.mean(train_loss))
+        agg_valid_loss.append(np.mean(val_loss))
+        if save_model:
+            save_path = "model/lstm-model-hidden{}.pt".format(i+1)
+            model.update_path(save_path)
+            save_model_to_file(model, save_path)
+        print("Hidden Size: {}, Mean Train Loss: {}, Mean Validation Loss: {}".format(size, agg_train_loss[-1], agg_valid_loss[-1]))
+    return agg_train_loss, agg_valid_loss, sizes
+
+
 def save_model_to_file(model: LSTMSoil, save_path: str):
     print("Saving model to {}".format(save_path))
     _dir = os.path.dirname(__file__)
@@ -140,9 +156,10 @@ def save_model_to_file(model: LSTMSoil, save_path: str):
 
 #hyperparameter estimation
 def test_cross_validation(x_train_tensors: Tensor, y_train_tensors: Tensor, optimizer: Adam
-                            , model: LSTMSoil, loss_fn: nn.MSELoss, save_model: bool, max_folds: int) -> (list, list, list):
+                            , input_size: int, device: torch.device, loss_fn: nn.MSELoss, save_model: bool, max_folds: int) -> (list, list, list):
     agg_train_loss, agg_valid_loss = list(), list()
     for i in range(max_folds):
+        model = get_trained_model(input_size, device)
         train_loss, val_loss = perform_kfold_cross_val(x_train_tensors, y_train_tensors, optimizer, model, i + 1, loss_fn)
         agg_train_loss.append(np.mean(train_loss))
         agg_valid_loss.append(np.mean(val_loss))
@@ -196,14 +213,7 @@ def main():
     x_train_tensor, x_test_tensor = convert_to_tensor(x_train, device), convert_to_tensor(x_test, device)
     y_train_tensor, y_test_tensor = convert_to_tensor(y_train, device, reshape=False), convert_to_tensor(y_test, device, reshape=False)
 
-    # define hyperparameter variables
-    # important area to tweak!
-    epochs = 100 # number of epochs
-    learning_rate = 0.001 # learning rate
     input_size = len(X.columns) # number of features
-    hidden_size = 50 # number of neurons in the hidden state
-    n_layers = 1 # number of stacked lstm layers
-    output_size = 1 # output a real number
     # define loss function and optimizer
     loss_fn = torch.nn.MSELoss()
 
@@ -212,35 +222,37 @@ def main():
         # load model weights
         print("Loading model from file:", str(args.load))
         model: LSTMSoil = torch.load(str(args.load))
+        print(model)
     else:
-        model = get_trained_model(input_size, hidden_size, output_size, n_layers, x_train_tensor, device)
+        model = get_trained_model(input_size, device)
     
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    # send model to device
+    # # send model to device
     model.to(device)
-    train_losses, val_losses = test_cross_validation(x_train_tensor, y_train_tensor, optimizer
-                                    , model, loss_fn, args.save == 1, max_folds=18) # 18 seems best
-    min_val_loss = min(val_losses)
-    min_val_loss_idx = val_losses.index(min_val_loss)
-    print("Min Validation Loss: {} in fold: {}".format(min_val_loss, min_val_loss_idx + 1))
+    if args.load is None:
+        train_losses, val_losses = test_cross_validation(x_train_tensor, y_train_tensor, optimizer
+                                        , input_size, device, loss_fn, args.save == 1, max_folds=18) 
+        # train_losses, val_losses, sizes = test_hidden_size(x_train_tensor, y_train_tensor, optimizer
+        #                                 , input_size, device, loss_fn, args.save == 1)
+        min_val_loss = min(val_losses)
+        min_val_loss_idx = val_losses.index(min_val_loss)
+        # min_train_loss = min(train_losses)
+        # min_train_loss_idx = train_losses.index(min_train_loss)
+        print("Min Validation Loss: {} in fold: {}".format(min_val_loss, min_val_loss_idx + 1))
+        # print("Min Training Loss: {} in fold: {}".format(min_train_loss, min_train_loss_idx + 1))
     
     #load best model
     # model = LSTMSoil(input_size, hidden_size, output_size, n_layers, x_train_tensor.shape[1], device=device)
-    load_path = "model/lstm-model{}.pt".format(min_val_loss_idx + 1)
-    # model.load_state_dict(torch.load(load_path, map_location=device))
-    model: LSTMSoil = torch.load(load_path)
-    print(model)
-    # plot_losses(np.asarray(train_losses) * 100, np.asarray(val_losses) * 100, xlabel='K', ylabel='Loss x 100')
+        load_path = "model/lstm-model{}.pt".format(min_val_loss_idx + 1)
     
+        model: LSTMSoil = torch.load(load_path)
+        # model2: LSTMSoil = torch.load("model/lstm-model{}.pt".format(min_train_loss_idx + 1))
+        print(model)
+        # best_model = model if min_val_loss <= min_train_loss else model2
+        # model_choice = 'min_validation model' if min_val_loss <= min_train_loss else "min_training_model"
+        # print("Model used: " + model_choice)
+        # plot_losses(np.asarray(train_losses), np.asarray(val_losses), sizes, xlabel='K', ylabel='Loss')    
     test_result(model, x_test_tensor, y_test_tensor,loss_fn)
-
-    # if args.save == 1:
-    #     # save model
-    #     print("Saving model to ./model/lstm-mode.pt")
-    #     _dir = os.path.dirname(__file__)
-    #     save_local_path = "model/lstm-model.pt"
-    #     save_abs_path = os.path.join(_dir, save_local_path)
-    #     torch.save(model.state_dict(), save_abs_path)
     
 
 if __name__ == "__main__":
