@@ -13,6 +13,7 @@ from LSTMSoil import LSTMSoil
 import io
 from types import FunctionType
 from model_generation import get_model, learning_rate, get_model_hidden_size_estimation
+from sklearn.metrics import r2_score
 
 # load the data
 _dir = os.path.abspath('')
@@ -29,10 +30,10 @@ def get_data(path: str) -> pd.DataFrame:
     data_path = os.path.join(_dir, path)    
     df = pd.read_csv(data_path)
     df = df.drop(df.columns[0], axis=1)
-
     new_columns = df.columns.values
     new_columns[-1] = output_column
     df.columns = new_columns
+    print("Length: {}".format(len(df)))
     return df
 
 # possibly scale dataset here?
@@ -47,7 +48,7 @@ def split_sequence(dataframe: pd.DataFrame, outputColName: str, steps: int):
 # get features as X and output as Y
 def get_features_op(df: pd.DataFrame) -> (pd.DataFrame, pd.DataFrame):
     # splitting the sequence to get historical output values to use in the lstm
-    # df = split_sequence(dataframe=df, outputColName=output_column, steps=10)
+    df = split_sequence(dataframe=df, outputColName=output_column, steps=10)
     # split features and label
     X = df.drop(labels=output_column, axis=1)
     Y = df[output_column]
