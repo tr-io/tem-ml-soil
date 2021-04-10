@@ -33,8 +33,12 @@ def get_data(path: str) -> pd.DataFrame:
     new_columns = df.columns.values
     new_columns[-1] = output_column
     df.columns = new_columns
-    print("Length: {}".format(len(df)))
+    # print("Length: {}".format(len(df)))
     return df
+
+def get_tem_op(path: str):
+    df = pd.read_csv(os.path.join(_dir, path))
+    return df['Calibrated TEM output']
 
 # possibly scale dataset here?
 def split_sequence(dataframe: pd.DataFrame, outputColName: str, steps: int):
@@ -64,26 +68,31 @@ def plot_losses(train_losses: list, val_losses: list, sizes: list, xlabel: str, 
     plt.legend()
     plt.show()
 
-# split data into x_train, x_val, x_test and y_train, y_val, y_test
-def split_data(X: pd.DataFrame, Y: pd.DataFrame) -> (np.array, np.array, np.array, np.array, np.array, np.array) :
+# split data into x_train, x_test
+def split_data(X: pd.DataFrame, reshape: bool) -> (np.array, np.array) :
     # split into train, validation, test sets
     # make sure to reshape all the label sets (y-sets) to be [dimension, 1] because of PyTorch
-    x_train = X.iloc[:1386, :].to_numpy()
-    y_train = Y.iloc[:1386].to_numpy()
-    y_train = y_train.reshape((len(y_train), 1))
+    
+    x_train = X.iloc[:2078, :].to_numpy() if len(X.shape) > 1 else X.iloc[:2078].to_numpy()
+    if reshape:
+        x_train = x_train.reshape((len(x_train), 1))
+    # y_train = Y.iloc[:1386].to_numpy()
+    # y_train = y_train.reshape((len(y_train), 1))
 
-    x_valid = X.iloc[1386:2078, :].to_numpy()
-    y_valid = Y.iloc[1386:2078].to_numpy()
-    y_valid = y_valid.reshape((len(y_valid), 1))
+    # x_valid = X.iloc[1386:2078, :].to_numpy()
+    # y_valid = Y.iloc[1386:2078].to_numpy()
+    # if reshape:
+    #     x_valid = x_valid.reshape((len(x_valid), 1))
 
-    x_test = X.iloc[2078:, :].to_numpy()
-    y_test = Y.iloc[2078:].to_numpy()
-    y_test = y_test.reshape((len(y_test), 1))
+    x_test = X.iloc[2078:, :].to_numpy() if len(X.shape) > 1 else X.iloc[2078:].to_numpy()
+    # y_test = Y.iloc[2078:].to_numpy()
+    if reshape:
+        x_test = x_test.reshape((len(x_test), 1))
 
     # print("Train Shape: ", x_train.shape, y_train.shape)
     # print("Valid Shape: ", x_valid.shape, y_valid.shape)
     # print("Test Shape: ", x_test.shape, y_test.shape)
-    return x_train, x_valid, x_test, y_train, y_valid, y_test
+    return x_train, x_test
 
 # setup pytorch to use cuda (gpu training) if possible
 def setup_device():
@@ -204,34 +213,50 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-ld', '--load', type=str, help='Model file to load (state dict)') # option to load a saved model
     parser.add_argument('-sv', '--save', default=0, type=int, help='Save model or not (1 for true, 0 for false)')
+    parser.add_argument('-ldd', '--ldd', type=str)
     args = parser.parse_args()
 
     path = get_data_path()
     df: pd.DataFrame = get_data(path)
     X, Y = get_features_op(df)
-    x_train, x_val, x_test, y_train, y_val, y_test = split_data(X, Y)
+    Y_pre = get_tem_op("../../data/modified_data/modified_data_TEM.csv")
+    
+    # print(len(Y_pre), Y_pre.head(10), len(Y), Y.head(10), sep='\n')
+    x_train, x_test = split_data(X, reshape=False)
+    y_train, y_test = split_data(Y, reshape=True)
+    y_pre_train, y_pre_test = split_data(Y_pre, reshape=True)
     device = setup_device()
     x_train_tensor, x_test_tensor = convert_to_tensor(x_train, device), convert_to_tensor(x_test, device)
+    y_pre_train_tensor, y_pre_test_tensor = convert_to_tensor(y_pre_train, device, reshape=False), convert_to_tensor(y_pre_test, device, reshape=False)
     y_train_tensor, y_test_tensor = convert_to_tensor(y_train, device, reshape=False), convert_to_tensor(y_test, device, reshape=False)
 
     input_size = len(X.columns) # number of features
-    # define loss function and optimizer
+    # # define loss function and optimizer
     loss_fn = torch.nn.MSELoss()
-
+    
     # load model parameters if possible
     if args.load is not None:
         # load model weights
         print("Loading model from file:", str(args.load))
         model: LSTMSoil = torch.load(str(args.load))
+        # print(model)
+    elif args.ldd is not None:
+        # load pre-trained model
+        print("Loading model from file:", str(args.ldd))
+        model: LSTMSoil = torch.load(str(args.ldd))
         print(model)
     else:
         model = get_trained_model(input_size, device)
-    
+    # # # send model to device
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    # # send model to device
     model.to(device)
-    if args.load is None:
-        train_losses, val_losses = test_cross_validation(x_train_tensor, y_train_tensor, optimizer
+    if args.ldd is not None:
+        train_losses, val_losses = perform_kfold_cross_val(x_train_tensor, y_train_tensor, optimizer, model, 1, loss_fn)
+        print(ars)
+        # print("Average Train Loss: {}, Average Val Loss: {}".format(np.mean(train_losses), np.mean(val_losses)))
+
+    elif args.save is not None:
+        train_losses, val_losses = test_cross_validation(x_train_tensor, y_pre_train_tensor, optimizer
                                         , input_size, device, loss_fn, args.save == 1, max_folds=18) 
         # train_losses, val_losses, sizes = test_hidden_size(x_train_tensor, y_train_tensor, optimizer
         #                                 , input_size, device, loss_fn, args.save == 1)
@@ -253,7 +278,7 @@ def main():
         # model_choice = 'min_validation model' if min_val_loss <= min_train_loss else "min_training_model"
         # print("Model used: " + model_choice)
         # plot_losses(np.asarray(train_losses), np.asarray(val_losses), sizes, xlabel='K', ylabel='Loss')    
-    test_result(model, x_test_tensor, y_test_tensor,loss_fn)
+    test_result(model, x_test_tensor, y_pre_test_tensor,loss_fn)
     
 
 if __name__ == "__main__":

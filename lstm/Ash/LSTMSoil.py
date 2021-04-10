@@ -20,6 +20,7 @@ class LSTMSoil(nn.Module):
         self.fc = nn.Linear(hidden_size, output_size) # fully connected output layer
 
     def forward(self, x):
+        # print(self.n_layers, self.hidden_size, x.size(0))
         h_0 = Variable(torch.zeros(self.n_layers, x.size(0), self.hidden_size)).to(self.device) # set initial hidden state
         c_0 = Variable(torch.zeros(self.n_layers, x.size(0), self.hidden_size)).to(self.device) # set initial cell state
         # send input through LSTM
