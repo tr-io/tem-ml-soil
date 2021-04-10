@@ -36,6 +36,11 @@ def get_data(path: str) -> pd.DataFrame:
     print("Length: {}".format(len(df)))
     return df
 
+# pretraining data path - TEM
+def get_tem_data_path() -> str:
+    path = "../../data/modified_data/modified_data_TEM.csv"
+    return path
+
 # possibly scale dataset here?
 def split_sequence(dataframe: pd.DataFrame, outputColName: str, steps: int):
     
@@ -157,7 +162,7 @@ def save_model_to_file(model: LSTMSoil, save_path: str):
 
 #hyperparameter estimation
 def test_cross_validation(x_train_tensors: Tensor, y_train_tensors: Tensor, optimizer: Adam
-                            , input_size: int, device: torch.device, loss_fn: nn.MSELoss, save_model: bool, max_folds: int) -> (list, list, list):
+                            , input_size: int, device: torch.device, loss_fn: nn.MSELoss, save_model: bool, max_folds: int, pretrain: bool = False) -> (list, list, list):
     agg_train_loss, agg_valid_loss = list(), list()
     for i in range(max_folds):
         model = get_trained_model(input_size, device)
@@ -165,7 +170,7 @@ def test_cross_validation(x_train_tensors: Tensor, y_train_tensors: Tensor, opti
         agg_train_loss.append(np.mean(train_loss))
         agg_valid_loss.append(np.mean(val_loss))
         if save_model:
-            save_path = "model/lstm-model{}.pt".format(i + 1)
+            save_path = "model/lstm-model{}.pt".format(i + 1) if pretrain == False else "model/pretrained/pt-lstm-model{}.pt".format(i+1)
             model.update_path(save_path)
             save_model_to_file(model, save_path)
         print("K-Folds: {}, Mean Train Loss: {}, Mean Validation Loss: {}".format(i + 1, agg_train_loss[-1], agg_valid_loss[-1]))
@@ -202,37 +207,66 @@ def test_result(model: LSTMSoil, x_test_tensor: Tensor, y_test_tensor: Tensor, l
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument('-pt', '--pretrain', type=int, default=0, help='Pretrain the model with TEM outputs (1 for true, 0 for false)')
     parser.add_argument('-ld', '--load', type=str, help='Model file to load (state dict)') # option to load a saved model
     parser.add_argument('-sv', '--save', default=0, type=int, help='Save model or not (1 for true, 0 for false)')
     args = parser.parse_args()
+
+    pretrain = args.pretrain
+    # initialize values that are needed
+    device = setup_device()
+    loss_fn = torch.nn.MSELoss()
+
+    # if we are pretraining
+    if pretrain == 1:
+        pt_path = get_tem_data_path()
+        pt_df: pd.DataFrame = get_data(pt_path)
+        print(pt_df)
+        ptX, ptY = get_features_op(pt_df)
+        ptx_train, ptx_val, ptx_test, pty_train, pty_val, pty_test = split_data(ptX, ptY) # split data, but ignore test sets
+        ptx_train_tensor = convert_to_tensor(ptx_train, device)
+        pty_train_tensor = convert_to_tensor(pty_train, device, reshape=False)
+        pt_input_size = len(ptX.columns)
+        model = get_trained_model(pt_input_size, device)
+        model.to(device)
+
+        optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+        pt_train_losses, pt_val_losses = test_cross_validation(ptx_train_tensor, pty_train_tensor, optimizer,
+                                                                pt_input_size, device, loss_fn, True, max_folds=18, pretrain=True)
+        min_pt_val_loss = min(pt_val_losses)
+        min_pt_val_loss_idx = pt_val_losses.index(min_pt_val_loss)
+        print("Min Pretraining Validation Loss: {} in fold: {}".format(min_pt_val_loss, min_pt_val_loss_idx + 1))
+        pt_load_path = "model/pretrained/pt-lstm-model{}.pt".format(min_pt_val_loss_idx + 1)
+        pt_model: LSTMSoil = torch.load(pt_load_path) # load the pretrained model...
 
     path = get_data_path()
     df: pd.DataFrame = get_data(path)
     X, Y = get_features_op(df)
     x_train, x_val, x_test, y_train, y_val, y_test = split_data(X, Y)
-    device = setup_device()
     x_train_tensor, x_test_tensor = convert_to_tensor(x_train, device), convert_to_tensor(x_test, device)
     y_train_tensor, y_test_tensor = convert_to_tensor(y_train, device, reshape=False), convert_to_tensor(y_test, device, reshape=False)
 
     input_size = len(X.columns) # number of features
     # define loss function and optimizer
-    loss_fn = torch.nn.MSELoss()
 
     # load model parameters if possible
-    if args.load is not None:
+    # load only if we don't pretrain
+    if args.load is not None and pretrain == 0:
         # load model weights
         print("Loading model from file:", str(args.load))
         model: LSTMSoil = torch.load(str(args.load))
         print(model)
+    elif pretrain == 1:
+        model = pt_model
     else:
         model = get_trained_model(input_size, device)
-    
+
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     # # send model to device
     model.to(device)
     if args.load is None:
         train_losses, val_losses = test_cross_validation(x_train_tensor, y_train_tensor, optimizer
-                                        , input_size, device, loss_fn, args.save == 1, max_folds=18) 
+                                        , input_size, device, loss_fn, args.save == 1, max_folds=18, pretrain=False) 
         # train_losses, val_losses, sizes = test_hidden_size(x_train_tensor, y_train_tensor, optimizer
         #                                 , input_size, device, loss_fn, args.save == 1)
         min_val_loss = min(val_losses)
