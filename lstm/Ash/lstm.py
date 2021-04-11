@@ -30,11 +30,16 @@ def get_data(path: str) -> pd.DataFrame:
     data_path = os.path.join(_dir, path)    
     df = pd.read_csv(data_path)
     df = df.drop(df.columns[0], axis=1)
+    df = df.drop("X", axis=1)
     new_columns = df.columns.values
     new_columns[-1] = output_column
     df.columns = new_columns
+    new_df = df[[col for col in df.columns if col != output_column]]
+    new_df = (new_df - new_df.mean())/new_df.std()
+    kwargs = {output_column: df[output_column].values}
+    new_df = new_df.assign(**kwargs)
     # print("Length: {}".format(len(df)))
-    return df
+    return new_df
 
 def get_tem_op(path: str):
     df = pd.read_csv(os.path.join(_dir, path))
@@ -151,7 +156,7 @@ def test_hidden_size(x_train_tensors: Tensor, y_train_tensors: Tensor, optimizer
         agg_valid_loss.append(np.mean(val_loss))
         if save_model:
             save_path = "model/lstm-model-hidden{}.pt".format(i+1)
-            model.update_path(save_path)
+            model.update_path(save_path, i+1)
             save_model_to_file(model, save_path)
         print("Hidden Size: {}, Mean Train Loss: {}, Mean Validation Loss: {}".format(size, agg_train_loss[-1], agg_valid_loss[-1]))
     return agg_train_loss, agg_valid_loss, sizes
@@ -251,11 +256,12 @@ def main():
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     model.to(device)
     if args.ldd is not None:
-        train_losses, val_losses = perform_kfold_cross_val(x_train_tensor, y_train_tensor, optimizer, model, 1, loss_fn)
-        print(ars)
+        train_losses, val_losses = perform_kfold_cross_val(x_train_tensor, y_train_tensor, optimizer, model, 5, loss_fn)
+        save_model_to_file(model, "best_models_post/lstm-model.pt")
+        # print(ars)
         # print("Average Train Loss: {}, Average Val Loss: {}".format(np.mean(train_losses), np.mean(val_losses)))
 
-    elif args.save is not None:
+    elif args.save is not None and args.load is None:
         train_losses, val_losses = test_cross_validation(x_train_tensor, y_pre_train_tensor, optimizer
                                         , input_size, device, loss_fn, args.save == 1, max_folds=18) 
         # train_losses, val_losses, sizes = test_hidden_size(x_train_tensor, y_train_tensor, optimizer

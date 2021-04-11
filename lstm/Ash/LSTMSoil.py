@@ -31,8 +31,9 @@ class LSTMSoil(nn.Module):
         return out
 
     # to update path
-    def update_path(self, path: str):
+    def update_path(self, path: str, model_index: int):
         self.path = path
+        self.model_index = model_index
     
     # for string representation
     def __str__(self):
