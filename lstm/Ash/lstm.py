@@ -284,7 +284,7 @@ def main():
         # model_choice = 'min_validation model' if min_val_loss <= min_train_loss else "min_training_model"
         # print("Model used: " + model_choice)
         # plot_losses(np.asarray(train_losses), np.asarray(val_losses), sizes, xlabel='K', ylabel='Loss')    
-    test_result(model, x_test_tensor, y_pre_test_tensor,loss_fn)
+    test_result(model, x_test_tensor, y_test_tensor,loss_fn)
     
 
 if __name__ == "__main__":
